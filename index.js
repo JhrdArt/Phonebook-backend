@@ -4,12 +4,11 @@ const app = express();
 const morgan = require("morgan");
 const cors = require("cors");
 const Person = require("./Models/person");
-const { error } = require("qrcode-terminal");
 app.use(cors());
 app.use(express.json());
 app.use(express.static("dist"));
 
-const errorHandler = (error, request, response, next) => {
+const errorHandler = (error, request, response) => {
   console.error(error.message);
 
   if (error.name === "CastError") {
@@ -57,11 +56,15 @@ app.get("/api/persons", (request, response, next) => {
     .catch((error) => next(error));
 });
 
-app.get("/info", (request, response) => {
-  response.send(
-    ` <p>Phonebook has info for ${persons.length} people</p>
-        <p>${new Date()}</p>`
-  );
+app.get("/info", (request, response, next) => {
+  Person.countDocuments({})
+    .then((count) => {
+      response.send(
+        `<p>Phonebook has info for ${count} people</p>
+         <p>${new Date()}</p>`
+      );
+    })
+    .catch((error) => next(error));
 });
 
 app.get("/api/persons/:id", (request, response, next) => {

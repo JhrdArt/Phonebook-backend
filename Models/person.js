@@ -8,7 +8,7 @@ const URL = `mongodb+srv://jhordart:${password}@cluster0.5tpgdom.mongodb.net/Pho
 const connectToDB = async () => {
   try {
     await mongoose.connect(URL);
-    console.log(`Connected to MongoDB`);
+    console.log("Connected to MongoDB");
   } catch (error) {
     console.log(`Error connecting to MongoDB: ${error.message}`);
   }
