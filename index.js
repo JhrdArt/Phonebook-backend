@@ -1,10 +1,27 @@
+require("dotenv").config();
 const express = require("express");
 const app = express();
 const morgan = require("morgan");
 const cors = require("cors");
+const Person = require("./Models/person");
+const { error } = require("qrcode-terminal");
 app.use(cors());
 app.use(express.json());
 app.use(express.static("dist"));
+
+const errorHandler = (error, request, response, next) => {
+  console.error(error.message);
+
+  if (error.name === "CastError") {
+    return response.status(400).json({ error: "Mal formatted id" });
+  }
+
+  if (error.name === "ValidationError") {
+    return response.status(400).json({ error: error.message });
+  }
+
+  return response.status(500).json({ error: "Internal server error" });
+};
 
 app.use(
   morgan((tokens, request, response) => {
@@ -28,91 +45,97 @@ app.use(
   })
 );
 
-const persons = [
-  {
-    name: "Arto Hellas",
-    number: "040-123456",
-    id: 1,
-  },
-  {
-    name: "Ada Lovelace",
-    number: "39-44-5323523",
-    id: 2,
-  },
-  {
-    name: "Dan Abramov",
-    number: "12-43-234345",
-    id: 3,
-  },
-  {
-    name: "Sahir Arteaga García",
-    number: "+54 9 3543 64-1966",
-    id: 5,
-  },
-];
-
-//INICIO
 app.get("/", (request, response) => {
   response.send("<h1>BACKEND PHONEBOOK</h1>");
 });
-//BASE DE DATOS API
-app.get("/api/persons", (request, response) => {
-  response.json(persons);
+
+app.get("/api/persons", (request, response, next) => {
+  Person.find({})
+    .then((persons) => {
+      response.json(persons);
+    })
+    .catch((error) => next(error));
 });
-//INFORMACIÓN DE LA BASE DE DATOS
+
 app.get("/info", (request, response) => {
   response.send(
     ` <p>Phonebook has info for ${persons.length} people</p>
-      <p>${new Date()}</p>`
+        <p>${new Date()}</p>`
   );
 });
-//IMPLEMENTAR: BUSQUEDA POR ID
-app.get("/api/persons/:id", (request, response) => {
-  const id = Number(request.params.id);
-  const person = persons.filter((p) => p.id === id);
-  if (person.length === 0) {
-    return response.status(404).end();
-  }
-  response.json(person);
+
+app.get("/api/persons/:id", (request, response, next) => {
+  Person.findById(request.params.id)
+    .then((person) => {
+      if (person) {
+        response.json(person);
+      } else {
+        return response.status(404).end();
+      }
+    })
+    .catch((error) => next(error));
 });
-//IMPLEMENTAR: ELIMINAR POR ID
-app.delete("/api/persons/:id", (request, response) => {
-  const id = request.params.id;
-  const person = persons.filter((p) => p.id !== id);
-  response.status(204).end();
+
+app.delete("/api/persons/:id", (request, response, next) => {
+  Person.findByIdAndDelete(request.params.id)
+    .then((person) => {
+      if (person) {
+        response.status(204).end();
+      } else {
+        response
+          .status(404)
+          .json({ error: `Person with id ${request.params.id} not found` });
+      }
+    })
+    .catch((error) => next(error));
 });
-//IMPLEMENTAR: GENERADOR DE NUEVO ID
-const idGenerator = () => {
-  const maxID = persons.length > 0 ? Math.max(...persons.map((p) => p.id)) : 0;
-  return maxID + 100000;
-};
-//IMPLEMENTAR: POSTEAR NUEVO USUARIO
-app.post("/api/persons", (request, response) => {
+
+app.post("/api/persons", (request, response, next) => {
   const body = request.body;
-  console.log(request.body);
-  const name = persons.find((p) => body.name === p.name);
 
   if (!body.name || !body.number) {
     return response.status(400).json({
-      error: "Name and number are required    ",
-    });
-  }
-  if (name) {
-    response.status(400).json({
-      error: "Name must be unique",
+      error: "Name and number are required",
     });
   }
 
-  const person = {
-    name: body.name,
-    number: body.number,
-    id: idGenerator(),
-  };
+  if (body.name.length < 3) {
+    return response.status(400).json({
+      error: `Person validation failed: Path 'name' (${body.name}) is shorter than the minimum allowed length (3).`,
+    });
+  }
 
-  response.json([...persons, person]);
+  if (body.number.length < 8) {
+    return response.status(400).json({
+      error: `Person validation failed: Path 'number' (${body.number}) is shorter than the minimum allowed length (3).`,
+    });
+  }
+
+  Person.findOne({ name: body.name })
+    .then((existingPerson) => {
+      if (existingPerson) {
+        return Person.findOneAndUpdate(
+          { name: body.name },
+          { number: body.number },
+          { new: true }
+        );
+      } else {
+        const person = new Person({
+          name: body.name,
+          number: body.number,
+        });
+        return person.save();
+      }
+    })
+    .then((updatedPerson) => {
+      response.json(updatedPerson);
+    })
+    .catch((error) => next(error));
 });
+
+app.use(errorHandler);
 
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
-  `El servidor está activo en el puerto: ${PORT}`;
+  console.log(`El servidor está activo en el puerto: ${PORT}`);
 });
